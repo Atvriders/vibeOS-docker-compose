@@ -30,22 +30,28 @@ This is the primary, fully-working install path. It pulls the prebuilt image
    cd vibeOS-docker-compose
    ```
 
-2. **Paste your Anthropic API key.** The environment now lives **inside the
-   compose file** — there is no separate mandatory `.env` step. Open
-   `docker-compose.yml`, find the `environment:` block, and replace the
-   placeholder for `ANTHROPIC_API_KEY` with your real key:
+2. **Paste your Anthropic API key.** The environment lives **inside the compose
+   file** — there is no separate mandatory `.env` step. The compose file itself
+   is intentionally comment-free; the `environment:` block looks like this, and
+   each variable is explained below:
 
    ```yaml
    environment:
-     # PASTE YOUR ANTHROPIC API KEY HERE (replace the placeholder).
-     # A host env var of the same name, if set, overrides this value.
      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-sk-ant-REPLACE_WITH_YOUR_KEY}"
+     OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+     DEDALUS_API_KEY: "${DEDALUS_API_KEY:-}"
+     NODE_ENV: "production"
    ```
 
-   With the `${VAR:-default}` form, an exported host env var
-   (`export ANTHROPIC_API_KEY=sk-ant-...`) wins if present; otherwise the value
-   you pasted inline is used. **Never commit a real key** — keep the obvious
-   placeholder in any commit.
+   Open `docker-compose.yml` and replace the `ANTHROPIC_API_KEY` placeholder
+   (`sk-ant-REPLACE_WITH_YOUR_KEY`) with your real key. With the `${VAR:-default}`
+   form, an exported host env var (`export ANTHROPIC_API_KEY=sk-ant-...`) wins if
+   present; otherwise the inline value is used. The placeholder is intentionally
+   invalid — the container still starts, but Claude calls fail with an auth error
+   until you supply a real key. `OPENAI_API_KEY` / `DEDALUS_API_KEY` are optional
+   (leave empty to disable those features). **Never commit a real key** — keep the
+   placeholder in any commit. (See [Environment variables](#environment-variables)
+   for the full reference, including build-time-only `NEXT_PUBLIC_*` values.)
 
 3. **Start it** (this pulls `ghcr.io/atvriders/vibeos-docker-compose:latest`):
 

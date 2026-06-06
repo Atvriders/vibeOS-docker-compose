@@ -1,37 +1,12 @@
-# vibe os — production docker-compose
-#
-# This pulls the prebuilt image from GitHub Container Registry (no local build).
-#
-# QUICK START:
-#   1. Edit ANTHROPIC_API_KEY below: replace sk-ant-REPLACE_WITH_YOUR_KEY with your
-#      real Anthropic API key (or export ANTHROPIC_API_KEY in your shell, which
-#      overrides the inline value below).
-#   2. Run:  docker compose up
-#   3. Open: http://localhost:3000
-#
-# Notes:
-#   - This image is prebuilt. Runtime env vars (below) configure the server only.
-#   - NEXT_PUBLIC_* values (e.g. NEXT_PUBLIC_OPENAI_API_KEY, NEXT_PUBLIC_KERNEL_API_KEY)
-#     are inlined into the client bundle at BUILD time and CANNOT be changed here on a
-#     prebuilt image — setting them in this environment block has no effect.
-
 services:
   vibe-os:
     image: ghcr.io/atvriders/vibeos-docker-compose:latest
     ports:
       - "3000:3000"
     environment:
-      # REQUIRED: paste your Anthropic API key here (replaces the placeholder),
-      # or set ANTHROPIC_API_KEY in your host environment to override it.
-      # The Claude Code SDK/CLI reads this from the environment. The placeholder
-      # below is intentionally invalid — the container will start, but Claude
-      # calls fail with an auth error until you supply a real key.
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-sk-ant-REPLACE_WITH_YOUR_KEY}"
-      # Optional server-side features (leave empty if unused).
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       DEDALUS_API_KEY: "${DEDALUS_API_KEY:-}"
-      # Mirrors the image's baked-in default (the Dockerfile already sets
-      # NODE_ENV=production at runtime); kept here only for explicitness.
       NODE_ENV: "production"
     restart: unless-stopped
     stdin_open: true
