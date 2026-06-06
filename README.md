@@ -18,7 +18,7 @@ The published image bundles everything the app spawns at runtime: the Next.js se
 
 That's it — you do **not** need Bun, Node, Python, or Chrome installed on the host. They all live inside the image.
 
-## 1. Quick start (Docker Compose, published image)
+## Install with Docker Compose
 
 This is the primary, fully-working install path. It pulls the prebuilt image
 `ghcr.io/atvriders/vibeos-docker-compose:latest` from GHCR — no local build.
@@ -76,7 +76,7 @@ what this image runs — `next start` serves the normal build.) The app listens
 on `0.0.0.0` and honors the `PORT` env var (default `3000`). It runs as the
 non-root user `nextjs` (uid 502, gid 20) with `HOME=/home/nextjs`.
 
-## 2. Local development with hot reload
+## Local development (hot reload)
 
 To work on the source with live reload, build the dev image locally (it mounts
 your working tree and runs `next dev`):
@@ -93,7 +93,7 @@ reflected in the running container.
 > `NODE_ENV=production` before `bun install` / `bun run build`, or the build
 > will fail; `NODE_ENV=production` is set only for the production runtime.
 
-## 3. Building and publishing the image
+## Building & publishing the image
 
 The production image is built and published automatically by a GitHub Action.
 
@@ -128,9 +128,9 @@ Puppeteer/browser-use, switches to the non-root `nextjs` user, and sets
 `NODE_ENV=production` for the runtime only (never before the build). It is a
 single-stage image that keeps the full `node_modules` tree for runtime.
 
-## 4. Environment variables
+## Environment variables
 
-Set these in the `environment:` block of `docker-compose.yml` (see Quick start).
+Set these in the `environment:` block of `docker-compose.yml` (see **Install with Docker Compose** above).
 
 | Variable | Required | Notes |
 | --- | --- | --- |
