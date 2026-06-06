@@ -1,16 +1,13 @@
 # syntax=docker/dockerfile:1
 #
-# Production Dockerfile for vibeOS (Next.js 15.5 + Claude Code).
+# Development Dockerfile for vibeOS (Next.js 15.5 + Claude Code).
 #
-# Single-stage on purpose: the running app needs the FULL node_modules tree at
-# runtime (the Claude Code SDK/CLI and bundled binaries), and it spawns python
-# runners that live under /app/src via process.cwd(). A multi-stage
-# "standalone" copy would drop those, so a single stage is both simpler and
-# lower risk. NOTE: next.config.ts sets
-# output: 'standalone', but this image deliberately does NOT use the standalone
-# server output -- it runs `next start` against the full tree (see CMD below).
+# Runs `next dev` with hot reload. docker-compose.dev.yml bind-mounts the repo
+# over /app (and keeps the image's /app/node_modules via an anonymous volume),
+# so the dependencies and runtime binaries baked here are what the live-reloaded
+# code uses.
 #
-# Build:  docker build -t ghcr.io/atvriders/vibeos-docker-compose:latest .
+# Build:  docker build -f Dockerfile.dev -t ghcr.io/atvriders/vibeos-docker-compose:dev .
 # No secrets are required at build time.
 FROM oven/bun:1
 
@@ -20,18 +17,18 @@ FROM oven/bun:1
 WORKDIR /app
 
 # Put bun's global install dir at a shared, on-PATH location so binaries
-# installed globally as root (e.g. the `claude` CLI) are resolvable by the
-# non-root `nextjs` runtime user too. Also keep python tools (uv/uvx) on PATH.
+# installed globally as root (e.g. the `claude` CLI the SDK spawns) are
+# resolvable by the non-root `nextjs` runtime user too. Also keep python tools
+# (uv/uvx) on PATH.
 ENV BUN_INSTALL=/usr/local/bun
 ENV PATH=/usr/local/bun/bin:/usr/local/bin:$PATH
 
 # ---------------------------------------------------------------------------
 # System dependencies (installed FIRST — they also provide `adduser`, which the
-# current oven/bun:1 base image no longer ships by default; creating the user
-# before this step fails with exit 127 "adduser: not found").
+# current oven/bun:1 base image no longer ships by default).
 # ---------------------------------------------------------------------------
 # - adduser: needed to create the non-root user below (absent from the base)
-# - python3-pip + uv: power the python runners (browser-use, dedalus)
+# - python3-pip + uv: power the `uvx` python runners (browser-use, dedalus)
 # - nodejs + npm: needed by `npx puppeteer ...` and assorted tooling
 # - libc6:amd64 / libstdc++6:amd64: multi-arch libs the prebuilt binaries need
 # Clean the apt lists afterwards to keep the image slim.
@@ -49,12 +46,11 @@ RUN dpkg --add-architecture amd64 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create the non-root runtime user (uid 502, primary group gid 20), matching the
-# dev image. HOME lives at /home/nextjs.
-# NOTE: on this Debian-based oven/bun image, gid 20 is the 'dialout' group
-# (NOT 'staff' -- 'staff' is gid 50 on Debian). The ownership ops below chown
-# files to the 'staff' group (gid 50). That is intentional: `nextjs` owns every
-# file by USER, so reads/writes work regardless of the group.
+# Create a non-root user (uid 502, primary group gid 20).
+# NOTE: gid 20 on this Debian-based oven/bun image is the `dialout` group, NOT
+# `staff` (staff is gid 50). We keep the historical `nextjs:staff` ownership
+# convention below; the user owns every file by uid, so reads/writes work
+# regardless of group.
 RUN adduser --system --uid 502 --gid 20 nextjs
 
 # Install the Claude Code CLI globally (the SDK spawns the `claude` binary).
@@ -62,14 +58,12 @@ RUN adduser --system --uid 502 --gid 20 nextjs
 RUN bun add -g @anthropic-ai/claude-code
 
 # ---------------------------------------------------------------------------
-# Application dependencies (full devDeps required to build)
+# Application dependencies
 # ---------------------------------------------------------------------------
-# IMPORTANT: NODE_ENV is NOT production here. devDependencies (typescript,
-# tailwindcss, @types/*, eslint-config-next) are required for `next build`.
+# In dev we keep the FULL dependency tree (devDeps included) so `next dev`,
+# tailwind, typescript, etc. all work. Plain `bun install` so a slightly
+# out-of-sync committed lockfile cannot fail the build.
 COPY package.json bun.lock ./
-
-# Install JS deps. Plain `bun install` (not --frozen-lockfile) so a slightly
-# out-of-sync committed lockfile cannot fail the image build.
 RUN bun install
 
 # ---------------------------------------------------------------------------
@@ -84,40 +78,36 @@ ENV HOME=/home/nextjs
 ENV PUPPETEER_CACHE_DIR=/home/nextjs/.cache/puppeteer
 
 # Install Chrome as the nextjs user so the binary + cache are owned by and
-# reachable for the runtime user.
-# NOTE: `puppeteer` is intentionally NOT a project dependency, so `npx` fetches
-# it transiently at build time. Pin to puppeteer 24.x: puppeteer >=25 requires
-# Node >=22.12, but this Debian base ships Node 20, so the unpinned 'latest'
-# fails the engine check. 24.x supports Node >=18 and still installs Chrome.
+# reachable for the runtime user. Pin puppeteer 24.x: >=25 needs Node >=22.12
+# but this base ships Node 20 (24.x supports Node >=18).
 RUN chown -R nextjs:staff /app
 USER nextjs
 RUN npx --yes puppeteer@24 browsers install chrome
 USER root
 
 # ---------------------------------------------------------------------------
-# Application source + production build
+# Application source
 # ---------------------------------------------------------------------------
+# Copied so the image is runnable standalone; docker-compose.dev.yml bind-mounts
+# the live repo over this for hot reload.
 COPY --chown=nextjs:staff . .
 
 # Ensure the whole tree (including freshly copied source) is owned by nextjs.
 RUN chown -R nextjs:staff /app
 
-# Build as the non-root user. NODE_ENV is still unset/development here so the
-# devDependencies are available to the compiler/bundler.
+# Switch to the non-root runtime user for the dev server.
 USER nextjs
-RUN bun run build
 
 # ---------------------------------------------------------------------------
-# Runtime configuration (production)
+# Runtime configuration (development)
 # ---------------------------------------------------------------------------
-# Set production ONLY now, after the build, so it never strips build deps.
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
 EXPOSE 3000
 
-# Start the Next.js production server (`bun run start` == `next start`, binds to
-# HOSTNAME:PORT == 0.0.0.0:3000).
-CMD ["bun", "run", "start"]
+# Start the Next.js dev server with hot reload (`bun run dev` == `next dev`,
+# binds to HOSTNAME:PORT == 0.0.0.0:3000).
+CMD ["bun", "run", "dev"]

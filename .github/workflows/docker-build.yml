@@ -1,0 +1,80 @@
+name: Build and Push Docker Image
+
+# Builds the production image and pushes it to GitHub Container Registry (GHCR).
+#
+# Published image (matches docker-compose.yml + README exactly):
+#   ghcr.io/atvriders/vibeos-docker-compose
+# The `images:` value below is hardcoded (already lowercase) so the produced
+# image stays byte-identical to the path docker-compose.yml and the README pull,
+# independent of the repository slug. (`ghcr.io/${{ github.repository }}` would
+# also resolve to the same path once this repo lives at Atvriders/vibeOS-docker-compose,
+# but hardcoding keeps it unambiguous.)
+#
+# Auth: the workflow pushes with the built-in GITHUB_TOKEN, which can write to the
+# repo owner's GHCR namespace. This repo lives under the `atvriders` org, so the
+# token can publish ghcr.io/atvriders/*.
+#
+# Project convention: the published GHCR package must be PUBLIC. After the first
+# successful push, set Packages -> vibeos-docker-compose -> Package settings ->
+# Change visibility -> Public so `docker pull ghcr.io/atvriders/vibeos-docker-compose:latest`
+# works without auth.
+#
+# First run: GitHub may not auto-run the workflow on a brand-new/forked repo, so
+# the first build can be started manually via the workflow_dispatch trigger
+# ("Run workflow" button) below.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # HARDCODED canonical path (already lowercase). Must stay byte-identical
+          # to docker-compose.yml `image:` and the README. Do NOT switch this to
+          # `ghcr.io/${{ github.repository }}` — see the header comment for why.
+          images: ghcr.io/atvriders/vibeos-docker-compose
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,format=short
+            type=semver,pattern={{version}}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Runner is amd64; the Dockerfile installs amd64 libs and amd64
+          # Chrome, so build for linux/amd64 only (do NOT add arm64).
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

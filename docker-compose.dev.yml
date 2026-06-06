@@ -1,0 +1,36 @@
+# vibe os — local development with hot reload
+#
+# This builds the image locally from Dockerfile.dev (no GHCR pull) and bind-mounts
+# your source into the container so Next.js Fast Refresh picks up edits live.
+#
+# Run:  docker compose -f docker-compose.dev.yml up --build
+# Open: http://localhost:3000
+#
+# ANTHROPIC_API_KEY is REQUIRED (the claude-code SDK/CLI reads it from the env).
+# Paste your key below in place of the placeholder, OR export ANTHROPIC_API_KEY in
+# your shell before running (a host env var overrides the inline placeholder).
+
+services:
+  vibe-os:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    # Local tag for the dev-built image (this file BUILDS it; it does not pull from GHCR).
+    image: ghcr.io/atvriders/vibeos-docker-compose:dev
+    ports:
+      - "3000:3000"
+    environment:
+      # REQUIRED: paste your Anthropic API key here (replaces the placeholder),
+      # or set ANTHROPIC_API_KEY in your host environment to override it.
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-sk-ant-REPLACE_WITH_YOUR_KEY}"
+      # Optional server-side features (safe to leave empty):
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      DEDALUS_API_KEY: "${DEDALUS_API_KEY:-}"
+      NODE_ENV: "development"
+    volumes:
+      # Bind-mount the working tree for hot reload, but keep the image's installed
+      # node_modules (and its prebuilt Chrome) by shadowing it with an anonymous volume.
+      - .:/app
+      - /app/node_modules
+    stdin_open: true
+    tty: true
